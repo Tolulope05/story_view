@@ -106,8 +106,9 @@ class StoryVideoState extends State<StoryVideo> {
           // Direct network for CloudFront / signed URLs
           playerController = VideoPlayerController.networkUrl(
             Uri.parse(widget.videoLoader.url),
-            httpHeaders:
-                widget.videoLoader.requestHeaders as Map<String, String>,
+            httpHeaders: (widget.videoLoader.requestHeaders == null)
+                ? {}
+                : widget.videoLoader.requestHeaders as Map<String, String>,
           );
         } else {
           // Original cached file method

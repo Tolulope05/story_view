@@ -49,6 +49,9 @@ class VideoLoader {
           onComplete();
         }
       }
+    }, onError: (_) {
+      this.state = LoadState.failure;
+      onComplete();
     });
   }
 }
@@ -121,6 +124,11 @@ class StoryVideoState extends State<StoryVideo> {
             setState(() {});
             widget.storyController?.play();
           }
+        }).catchError((_) {
+          widget.videoLoader.state = LoadState.failure;
+          if (mounted) {
+            setState(() {});
+          }
         });
 
         if (widget.storyController != null) {
@@ -179,18 +187,10 @@ class VideoContentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (videoLoadState == LoadState.success &&
-        playerController != null &&
-        playerController!.value.isInitialized) {
-      return Center(
-        child: AspectRatio(
-          aspectRatio: playerController!.value.aspectRatio,
-          child: VideoPlayer(playerController!),
-        ),
-      );
-    }
-
-    if (videoLoadState == LoadState.loading) {
+    if (videoLoadState == LoadState.loading ||
+        (videoLoadState == LoadState.success &&
+            (playerController == null ||
+                !playerController!.value.isInitialized))) {
       return Center(
         child: loadingWidget ??
             const SizedBox(
@@ -201,6 +201,17 @@ class VideoContentView extends StatelessWidget {
                 strokeWidth: 3,
               ),
             ),
+      );
+    }
+
+    if (videoLoadState == LoadState.success &&
+        playerController != null &&
+        playerController!.value.isInitialized) {
+      return Center(
+        child: AspectRatio(
+          aspectRatio: playerController!.value.aspectRatio,
+          child: VideoPlayer(playerController!),
+        ),
       );
     }
 

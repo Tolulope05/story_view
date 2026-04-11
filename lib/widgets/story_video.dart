@@ -9,24 +9,37 @@ import '../utils.dart';
 import '../controller/story_controller.dart';
 
 class VideoLoader {
-  String url;
-
+  final String url;
   File? videoFile;
-
-  Map<String, dynamic>? requestHeaders;
+  final Map<String, dynamic>? requestHeaders;
+  final bool useCache; // NEW: option to skip cache for CloudFront
 
   LoadState state = LoadState.loading;
 
-  VideoLoader(this.url, {this.requestHeaders});
+  VideoLoader(
+    this.url, {
+    this.requestHeaders,
+    this.useCache = true, // Default is still cache (for normal videos)
+  });
 
   void loadVideo(VoidCallback onComplete) {
+    if (!useCache) {
+      // Skip cache completely → use direct network (fixes CloudFront signed URLs)
+      this.state = LoadState.success;
+      onComplete();
+      return;
+    }
+
     if (this.videoFile != null) {
       this.state = LoadState.success;
       onComplete();
+      return;
     }
 
-    final fileStream = DefaultCacheManager()
-        .getFileStream(this.url, headers: this.requestHeaders as Map<String, String>?);
+    final fileStream = DefaultCacheManager().getFileStream(
+      this.url,
+      headers: this.requestHeaders as Map<String, String>?,
+    );
 
     fileStream.listen((fileResponse) {
       if (fileResponse is FileInfo) {
@@ -46,22 +59,26 @@ class StoryVideo extends StatefulWidget {
   final Widget? loadingWidget;
   final Widget? errorWidget;
 
-  StoryVideo(this.videoLoader, {
+  StoryVideo(
+    this.videoLoader, {
     Key? key,
     this.storyController,
     this.loadingWidget,
     this.errorWidget,
   }) : super(key: key ?? UniqueKey());
 
-  static StoryVideo url(String url, {
+  // Updated static method to accept useCache parameter
+  static StoryVideo url(
+    String url, {
     StoryController? controller,
     Map<String, dynamic>? requestHeaders,
+    bool useCache = true, // NEW parameter
     Key? key,
     Widget? loadingWidget,
     Widget? errorWidget,
   }) {
     return StoryVideo(
-      VideoLoader(url, requestHeaders: requestHeaders),
+      VideoLoader(url, requestHeaders: requestHeaders, useCache: useCache),
       storyController: controller,
       key: key,
       loadingWidget: loadingWidget,
@@ -70,37 +87,45 @@ class StoryVideo extends StatefulWidget {
   }
 
   @override
-  State<StatefulWidget> createState() {
-    return StoryVideoState();
-  }
+  State<StatefulWidget> createState() => StoryVideoState();
 }
 
 class StoryVideoState extends State<StoryVideo> {
-  Future<void>? playerLoader;
-
   StreamSubscription? _streamSubscription;
-
   VideoPlayerController? playerController;
 
   @override
   void initState() {
     super.initState();
 
-    widget.storyController!.pause();
+    widget.storyController?.pause();
 
     widget.videoLoader.loadVideo(() {
       if (widget.videoLoader.state == LoadState.success) {
-        this.playerController =
-            VideoPlayerController.file(widget.videoLoader.videoFile!);
+        if (!widget.videoLoader.useCache) {
+          // Direct network for CloudFront / signed URLs
+          playerController = VideoPlayerController.networkUrl(
+            Uri.parse(widget.videoLoader.url),
+            httpHeaders:
+                widget.videoLoader.requestHeaders as Map<String, String>,
+          );
+        } else {
+          // Original cached file method
+          playerController =
+              VideoPlayerController.file(widget.videoLoader.videoFile!);
+        }
 
-        playerController!.initialize().then((v) {
-          setState(() {});
-          widget.storyController!.play();
+        playerController!.initialize().then((_) {
+          if (mounted) {
+            setState(() {});
+            widget.storyController?.play();
+          }
         });
 
         if (widget.storyController != null) {
           _streamSubscription =
               widget.storyController!.playbackNotifier.listen((playbackState) {
+            if (playerController == null) return;
             if (playbackState == PlaybackState.pause) {
               playerController!.pause();
             } else {
@@ -109,7 +134,7 @@ class StoryVideoState extends State<StoryVideo> {
           });
         }
       } else {
-        setState(() {});
+        if (mounted) setState(() {});
       }
     });
   }
@@ -137,10 +162,6 @@ class StoryVideoState extends State<StoryVideo> {
   }
 }
 
-/**
- * @name VideoContentView
- * @description Stateless widget that shows a video player or loading/error widgets based on video loading state.
- */
 class VideoContentView extends StatelessWidget {
   final LoadState videoLoadState;
   final VideoPlayerController? playerController;

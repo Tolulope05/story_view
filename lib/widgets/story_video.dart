@@ -216,7 +216,7 @@ class VideoContentView extends StatelessWidget {
       // AFTER
       return SizedBox.expand(
         child: FittedBox(
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           child: SizedBox(
             width: playerController!.value.size.width,
             height: playerController!.value.size.height,
